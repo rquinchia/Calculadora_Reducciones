@@ -1,0 +1,371 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+    <title>Cálculo Para Trefiladoras Multipasos</title>
+    <style>
+        body {
+            background: none;
+            display: flex;
+            flex-direction: column;
+            color: black;
+            font-family: Verdana, Arial, Helvetica, sans-serif;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            width: 90%;
+            max-width: 1200px;
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            background-color: white;
+            overflow: auto;
+        }
+        .content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .form-table {
+            width: 100%;
+            max-width: 600px;
+            margin-bottom: 20px;
+        }
+        .form-table td {
+            padding: 5px;
+        }
+        .chart-container {
+            width: 100%;
+            height: 400px;
+            margin-top: 20px;
+        }
+        .unit-label {
+            font-size: small;
+            color: black;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        let isMetric = true;
+
+        function toggleUnits() {
+            isMetric = !isMetric;
+            const unitLabel = isMetric ? 'mm' : 'in';
+            const conversionFactor = isMetric ? 25.4 : 1 / 25.4;
+            const decimalPlaces = isMetric ? 2 : 3;
+            document.getElementById("toggleButton").value = isMetric ? "Cambiar a Pulgadas" : "Cambiar a Milímetros";
+
+            document.querySelectorAll('.unit-label').forEach(label => {
+                label.textContent = `[${unitLabel}]`;
+            });
+
+            const convertField = (field) => {
+                if (field.value) {
+                    field.value = (parseFloat(field.value) * conversionFactor).toFixed(decimalPlaces);
+                }
+            };
+
+            convertField(document.forza_dati.Dini);
+            convertField(document.forza_dati.Dfin);
+
+            for (let i = 1; i <= 13; i++) {
+                convertField(document.getElementById(`D${i}`));
+            }
+
+            updateChartTitle();
+        }
+
+        function updateChartTitle() {
+            const unitLabel = isMetric ? 'mm' : 'in';
+            const ultimoDiametro = isMetric ? document.getElementById("Dfin.value").value : parseFloat(document.getElementById('D1').value).toFixed(3);
+            document.getElementById('chartTitle').innerHTML = `Diagrama de % de reducción [${ultimoDiametro} ${unitLabel}]`;
+        }
+
+        function Calcolo() {
+            var NumPassi = parseInt(forza_dati.NumPassi.value);
+            var Dini = parseFloat(forza_dati.Dini.value);
+            var Dfin = parseFloat(forza_dati.Dfin.value);
+            var RidUltimo = parseFloat(forza_dati.RidUltimo.value);
+
+            if (isNaN(NumPassi) || isNaN(Dini) || isNaN(Dfin) || isNaN(RidUltimo) || NumPassi < 1 || NumPassi > 13) {
+                alert("Por favor, ingrese valores válidos en todos los campos y asegúrese de que el número de pasos esté entre 1 y 13.");
+                return;
+            }
+
+            var Pmin = Math.log(1 / (1 - RidUltimo / 100));
+            var Pmax = 2 * (2 / NumPassi * Math.log(Dini / Dfin)) - Pmin;
+            var d = (Pmax - Pmin) / (NumPassi - 1);
+            var p = [];
+            for (var i = 0; i < NumPassi; i++) {
+                p[i] = Pmax - i * d;
+            }
+
+            var diametri = [Dini];
+            for (var i = 0; i < NumPassi; i++) {
+                diametri.push(diametri[i] * 1 / (Math.exp(p[i] / 2)));
+            }
+            diametri.push(Dfin);
+
+            var riduzioni = [];
+            const decimalPlaces = isMetric ? 2 : 3;
+            for (var i = 0; i < NumPassi; i++) {
+                var Sini = Math.PI * Math.pow(diametri[i], 2) / 4;
+                var Sfin = Math.PI * Math.pow(diametri[i + 1], 2) / 4;
+                var RidPer = (Sini - Sfin) / Sini * 100;
+                riduzioni.push(Math.round(RidPer * 100) / 100);
+            }
+
+            for (var i = 0; i < NumPassi; i++) {
+                document.getElementById('D' + (i + 1)).value = diametri[i + 1].toFixed(decimalPlaces);
+                document.getElementById('Red' + (i + 1)).value = riduzioni[i];
+            }
+
+            for (var i = NumPassi + 1; i <= 13; i++) {
+                document.getElementById('D' + i).value = "";
+                document.getElementById('Red' + i).value = "";
+            }
+
+            showChart(riduzioni);
+            updateChartTitle();
+        }
+
+        function Cancella() {
+            forza_dati.NumPassi.value = "";
+            forza_dati.Dini.value = "";
+            forza_dati.Dfin.value = "";
+            forza_dati.RidUltimo.value = "";
+            for (var i = 1; i <= 13; i++) {
+                document.getElementById('D' + i).value = "";
+                document.getElementById('Red' + i).value = "";
+            }
+            window.myChart.data.labels = [];
+            window.myChart.data.datasets[0].data = [];
+            window.myChart.update();
+        }
+
+        function showChart(riduzioni) {
+            var ctx = document.getElementById('myChart').getContext('2d');
+            var labels = riduzioni.map((_, index) => "Paso " + (index + 1));
+            var data = {
+                labels: labels,
+                datasets: [{
+                    label: 'Porcentaje de Reducción',
+                    data: riduzioni,
+                    fill: false,
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1
+                }]
+            };
+            var config = {
+                type: 'line',
+                data: data,
+                options: {
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Pasos'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: '% Reducción'
+                            }
+                        }
+                    }
+                }
+            };
+            if (window.myChart) {
+                window.myChart.destroy();
+            }
+            window.myChart = new Chart(ctx, config);
+        }
+
+        window.onload = function() {
+            var ctx = document.getElementById('myChart').getContext('2d');
+            var initialData = {
+                labels: [],
+                datasets: [{
+                    label: 'Porcentaje de Reducción',
+                    data: [],
+                    fill: false,
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1
+                }]
+            };
+            var config = {
+                type: 'line',
+                data: initialData,
+                options: {
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Pasos'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: '% Reducción'
+                            }
+                        }
+                    }
+                }
+            };
+            window.myChart = new Chart(ctx, config);
+        }
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1 align="center">
+            <strong><font face="tahoma" size="5" color="orange">CALCULO DE MONTAJES MULTIPASOS</font></strong>
+        </h1>
+        <div class="content">
+            <form name="forza_dati">
+                <table class="form-table" border="0" align="center">
+                    <tr>
+                        <td><b>Numero de pasos :</b></td>
+                        <td><input type="text" name="NumPassi"><span>(max 13 pasos)</span></td>
+                    </tr>
+                    <tr>
+                        <td><b>Diámetro de entrada (MP) :</b></td>
+                        <td><input type="text" name="Dini"><span class="unit-label">[mm]</span></td>
+                    </tr>
+                    <tr>
+                        <td><b>Diámetro ultimo paso (PT) :</b></td>
+                        <td><input type="text" name="Dfin"><span class="unit-label">[mm]</span></td>
+                    </tr>
+                    <tr>
+                        <td><b>Reducción último paso :</b></td>
+                        <td><input type="text" name="RidUltimo"> [%]</td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" align="center">
+                            <input type="button" value="Calcular" onclick="Calcolo()">
+                            <input type="button" value="Limpiar" onclick="Cancella()">
+                            <input type="button" id="toggleButton" value="Cambiar a Pulgadas" onclick="toggleUnits()">
+                        </td>
+                    </tr>
+                </table>
+            </form>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Formulario de Diámetro</title>
+    <style>
+        /* Ajustes CSS para mantener el diseño en una fila */
+        .form-table input[type="text"] {
+            width: 50px; /* Ajusta el ancho del campo para que se mantenga dentro de la fila */
+        }
+
+        .form-table .unit-label {
+            display: inline-block;
+            width: 30px; /* Ajusta el espacio que ocupa la unidad */
+            text-align: left;
+            font-size: 0.9em; /* Reduce el tamaño de la fuente si es necesario */
+            white-space: nowrap; /* Evita que el texto se divida en varias líneas */
+        }
+    </style>
+</head>
+<body>
+    <form name="Diametri">
+        <table class="form-table" border="0" align="center">
+            <!-- Encabezado de la tabla -->
+            <tr>
+                <th>Paso</th>
+                <th>Diámetro</th>
+                <th>% Reducción</th>
+            </tr>
+        <!-- Crear filas de cálculo de cada paso del 1 al 13 -->
+        <tr>
+            <td>1° paso</td>
+            <td><input type="text" id="D1"> <span class="unit-label">[mm]</span></td>
+            <td><input type="text" id="Red1"> [% reducción]</td>
+        </tr>
+        <tr>
+            <td>2° paso</td>
+            <td><input type="text" id="D2"> <span class="unit-label">[mm]</span></td>
+            <td><input type="text" id="Red2"> [% reducción]</td>
+        </tr>
+        <tr>
+            <td>3° paso</td>
+            <td><input type="text" id="D3"> <span class="unit-label">[mm]</span></td>
+            <td><input type="text" id="Red3"> [% reducción]</td>
+        </tr>
+        <tr>
+            <td>4° paso</td>
+            <td><input type="text" id="D4"> <span class="unit-label">[mm]</span></td>
+            <td><input type="text" id="Red4"> [% reducción]</td>
+        </tr>
+        <tr>
+            <td>5° paso</td>
+            <td><input type="text" id="D5"> <span class="unit-label">[mm]</span></td>
+            <td><input type="text" id="Red5"> [% reducción]</td>
+        </tr>
+        <tr>
+            <td>6° paso</td>
+            <td><input type="text" id="D6"> <span class="unit-label">[mm]</span></td>
+            <td><input type="text" id="Red6"> [% reducción]</td>
+        </tr>
+        <tr>
+            <td>7° paso</td>
+            <td><input type="text" id="D7"> <span class="unit-label">[mm]</span></td>
+            <td><input type="text" id="Red7"> [% reducción]</td>
+        </tr>
+        <tr>
+            <td>8° paso</td>
+            <td><input type="text" id="D8"> <span class="unit-label">[mm]</span></td>
+            <td><input type="text" id="Red8"> [% reducción]</td>
+        </tr>
+        <tr>
+            <td>9° paso</td>
+            <td><input type="text" id="D9"> <span class="unit-label">[mm]</span></td>
+            <td><input type="text" id="Red9"> [% reducción]</td>
+        </tr>
+        <tr>
+            <td>10° paso</td>
+            <td><input type="text" id="D10"> <span class="unit-label">[mm]</span></td>
+            <td><input type="text" id="Red10"> [% reducción]</td>
+        </tr>
+        <tr>
+            <td>11° paso</td>
+            <td><input type="text" id="D11"> <span class="unit-label">[mm]</span></td>
+            <td><input type="text" id="Red11"> [% reducción]</td>
+        </tr>
+        <tr>
+            <td>12° paso</td>
+            <td><input type="text" id="D12"> <span class="unit-label">[mm]</span></td>
+            <td><input type="text" id="Red12"> [% reducción]</td>
+        </tr>
+        <tr>
+            <td>13° paso</td>
+            <td><input type="text" id="D13"> <span class="unit-label">[mm]</span></td>
+            <td><input type="text" id="Red13"> [% reducción]</td>
+        </tr>
+    </table>
+</form>
+<form name="Diametri">
+    <table class="form-table" border="0" align="center">
+       
+        </tr>
+    </table>
+</form>
+ </div>
+            <div class="right">
+                <div id="chartTitle" class="title">Diagrama % de Reducción</div>
+                <canvas id="myChart" class="chart-container"></canvas>
+        </div>
+    </div>
+</body>
+</html>
